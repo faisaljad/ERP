@@ -1,0 +1,469 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// Core Module
+// -----------------------------------------------------------------------------
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  taxId     String?
+  logoUrl   String?
+  currency  String   @default("JOD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches Branch[]
+  users    User[]
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  warehouses     Warehouse[]
+  employees      Employee[]
+  posRegisters   PosRegister[]
+  orders         Order[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model User {
+  id          String       @id @default(uuid())
+  email       String       @unique
+  password    String // Hashed
+  name        String
+  role        Role         @default(VIEWER)
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  posSessions PosSession[]
+}
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  WAREHOUSE_MANAGER
+  HR_OFFICER
+  VIEWER
+}
+
+// -----------------------------------------------------------------------------
+// Accounting Module
+// -----------------------------------------------------------------------------
+
+model Account {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  name        String
+  type        AccountType
+  description String?
+
+  // Relationships
+  journalLines JournalEntryLine[]
+
+  parentId String?
+  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children Account[] @relation("AccountHierarchy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid())
+  date        DateTime @default(now())
+  description String?
+  reference   String?
+
+  lines JournalEntryLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JournalEntryLine {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id])
+
+  debit  Decimal @default(0)
+  credit Decimal @default(0)
+
+  description String?
+}
+
+// -----------------------------------------------------------------------------
+// Inventory Module
+// -----------------------------------------------------------------------------
+
+model Warehouse {
+  id       String  @id @default(uuid())
+  name     String
+  location String?
+  branchId String
+  branch   Branch  @relation(fields: [branchId], references: [id])
+
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id    String @id @default(uuid())
+  name  String
+  items Item[]
+}
+
+model Item {
+  id           String    @id @default(uuid())
+  sku          String    @unique
+  name         String
+  description  String?
+  categoryId   String?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  unit         String    @default("pcs")
+  reorderLevel Int       @default(10)
+  currentStock Int       @default(0) // Denormalized stock level for quick access
+
+  stockMovements StockMovement[]
+
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  orderLines         OrderLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+}
+
+model StockMovement {
+  id          String    @id @default(uuid())
+  itemId      String
+  item        Item      @relation(fields: [itemId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  quantity  Int // Positive for IN, Negative for OUT
+  type      StockMovementType
+  reference String?
+
+  createdAt DateTime @default(now())
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  TRANSFER
+  ADJUSTMENT
+}
+
+// -----------------------------------------------------------------------------
+// HR Module
+// -----------------------------------------------------------------------------
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String
+  employees Employee[]
+}
+
+model Employee {
+  id         String   @id @default(uuid())
+  firstName  String
+  lastName   String
+  email      String?  @unique
+  position   String
+  hireDate   DateTime
+  baseSalary Decimal
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  branchId     String?
+  branch       Branch?     @relation(fields: [branchId], references: [id])
+
+  payrolls      Payroll[]
+  leaveRequests LeaveRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Payroll {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  periodStart    DateTime
+  periodEnd      DateTime
+  baseSalary     Decimal // Actual amount to be paid (prorated)
+  originalSalary Decimal // Full contractual salary for that month (e.g. 1000)
+  payableDays    Int // Number of days worked in the period
+  allowances     Decimal  @default(0)
+  deductions     Decimal  @default(0)
+  netSalary      Decimal
+
+  isPaid      Boolean   @default(false)
+  paymentDate DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model LeaveRequest {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  type      LeaveType
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  status    LeaveStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DeductionRule {
+  id       String        @id @default(uuid())
+  name     String // e.g., "Social Security", "Health Insurance"
+  type     DeductionType // PERCENTAGE or FIXED
+  value    Decimal // The percentage (e.g., 0.075 for 7.5%) or fixed amount (e.g., 50)
+  isActive Boolean       @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum DeductionType {
+  PERCENTAGE
+  FIXED
+}
+
+// -----------------------------------------------------------------------------
+// Sales & POS Module
+// -----------------------------------------------------------------------------
+
+model Customer {
+  id      String  @id @default(uuid())
+  name    String
+  phone   String?
+  email   String?
+  address String?
+  taxId   String?
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PosRegister {
+  id       String  @id @default(uuid())
+  name     String
+  branchId String
+  branch   Branch  @relation(fields: [branchId], references: [id])
+  isActive Boolean @default(true)
+
+  sessions PosSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PosSession {
+  id         String      @id @default(uuid())
+  registerId String
+  register   PosRegister @relation(fields: [registerId], references: [id])
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+
+  startTime DateTime      @default(now())
+  endTime   DateTime?
+  status    SessionStatus @default(OPEN)
+
+  openingCash Decimal  @default(0)
+  closingCash Decimal?
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  orderNumber String      @unique
+  type        OrderType // POS or INVOICE (B2B)
+  status      OrderStatus @default(DRAFT)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  sessionId String? // Only for POS orders
+  session   PosSession? @relation(fields: [sessionId], references: [id])
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  subtotal Decimal @default(0)
+  tax      Decimal @default(0)
+  discount Decimal @default(0)
+  total    Decimal @default(0)
+
+  lines    OrderLine[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OrderType {
+  POS
+  INVOICE
+}
+
+enum OrderStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model OrderLine {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  quantity  Int
+  unitPrice Decimal
+  discount  Decimal @default(0)
+  subtotal  Decimal
+  tax       Decimal @default(0)
+  total     Decimal
+}
+
+model Payment {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  amount    Decimal
+  method    PaymentMethod
+  reference String?
+
+  createdAt DateTime @default(now())
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+}
+
+// -----------------------------------------------------------------------------
+// Purchasing Module
+// -----------------------------------------------------------------------------
+
+model Vendor {
+  id      String  @id @default(uuid())
+  name    String
+  contact String?
+  email   String?
+  phone   String?
+  address String?
+  taxId   String?
+
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  orderNumber String              @unique
+  status      PurchaseOrderStatus @default(DRAFT)
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id])
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  subtotal Decimal @default(0)
+  tax      Decimal @default(0)
+  discount Decimal @default(0)
+  total    Decimal @default(0)
+
+  lines PurchaseOrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  BILLED
+  CANCELLED
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  quantity    Int
+  receivedQty Int     @default(0)
+  unitPrice   Decimal
+  discount    Decimal @default(0)
+  subtotal    Decimal
+  tax         Decimal @default(0)
+  total       Decimal
+}
