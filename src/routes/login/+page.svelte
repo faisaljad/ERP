@@ -2,7 +2,7 @@
     import { enhance } from "$app/forms";
     let { form } = $props();
 
-    console.log("DATABASE_URL:", process.env.DATABASE_URL);
+    console.log("DATABASE_URL:", import.meta.env.DATABASE_URL);
 </script>
 
 <div class="min-h-screen flex items-center justify-center bg-gray-50">
