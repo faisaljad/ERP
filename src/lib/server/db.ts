@@ -29,13 +29,9 @@ if (finalConnectionString === "postgresql://dummy:dummy@localhost:5432/dummy") {
     console.warn("WARNING: No Database URL Environment Variables found on Vercel. Database operations will fail until added.");
 }
 
-const client = global.prisma || new PrismaClient({
-    datasources: {
-        db: {
-            url: finalConnectionString
-        }
-    }
-} as any);
+process.env.DATABASE_URL = finalConnectionString;
+
+const client = global.prisma || new PrismaClient();
 
 if (process.env.NODE_ENV === 'development') global.prisma = client;
 
