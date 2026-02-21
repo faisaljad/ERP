@@ -14,7 +14,12 @@ declare global {
 }
 
 // Fallback natively to process.env if SvelteKit dynamic injection misses Vercel's prefixed names
-const connectionString = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL || '';
+const connectionString = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL;
+
+if (!connectionString) {
+    console.error("CRITICAL ERROR: No Database URL Environment Variables found. Please link Neon to Vercel and redeploy.");
+    throw new Error("Missing DATABASE_URL. Vercel deployment has an empty environment.");
+}
 
 const pool = new Pool({ connectionString });
 const adapter = new PrismaNeon(pool as any);
