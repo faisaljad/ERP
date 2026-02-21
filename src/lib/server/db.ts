@@ -7,33 +7,29 @@ declare global {
     var prisma: PrismaClient | undefined;
 }
 
-const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.STORAGE_ERP_PRISMA_URL ||
-    process.env.STORAGE_ERP_POSTGRES_PRISMA_URL ||
-    process.env.STORAGE_ERP_URL ||
-    process.env.STORAGE_ERP_POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL ||
-    env.DATABASE_URL ||
-    env.STORAGE_ERP_PRISMA_URL ||
-    env.STORAGE_ERP_POSTGRES_PRISMA_URL ||
-    env.STORAGE_ERP_URL ||
-    env.STORAGE_ERP_POSTGRES_URL ||
-    env.POSTGRES_PRISMA_URL ||
-    env.POSTGRES_URL;
-
-const finalConnectionString = connectionString || "postgresql://dummy:dummy@localhost:5432/dummy";
-
-process.env.DATABASE_URL = finalConnectionString;
-
 let clientInstance: PrismaClient | undefined;
 
 function getClient() {
     if (!clientInstance) {
-        if (finalConnectionString === "postgresql://dummy:dummy@localhost:5432/dummy") {
+        // Evaluate connection strictly from SvelteKit runtime env, falling back to process.env as secondary
+        const connectionString =
+            env.STORAGE_ERP_PRISMA_URL ||
+            env.STORAGE_ERP_POSTGRES_PRISMA_URL ||
+            env.STORAGE_ERP_URL ||
+            env.STORAGE_ERP_POSTGRES_URL ||
+            env.POSTGRES_PRISMA_URL ||
+            env.POSTGRES_URL ||
+            env.DATABASE_URL ||
+            process.env.DATABASE_URL ||
+            "postgresql://dummy:dummy@localhost:5432/dummy";
+
+        if (connectionString === "postgresql://dummy:dummy@localhost:5432/dummy") {
             console.warn("WARNING: No Database URL Environment Variables found on Vercel. Database operations will fail until added.");
         }
+
+        // Force the connection string directly into process environment so Prisma SDK internal core finds it
+        process.env.DATABASE_URL = connectionString;
+
         clientInstance = global.prisma || new PrismaClient();
         if (process.env.NODE_ENV === 'development') global.prisma = clientInstance;
     }
