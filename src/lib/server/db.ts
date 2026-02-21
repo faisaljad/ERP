@@ -9,7 +9,8 @@ declare global {
     var prisma: PrismaClient | undefined;
 }
 
-const connectionString = `${env.DATABASE_URL}`;
+// Vercel Neon integration uses POSTGRES_PRISMA_URL or POSTGRES_URL
+const connectionString = `${env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL}`;
 
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
