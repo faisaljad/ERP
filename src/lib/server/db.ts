@@ -25,14 +25,29 @@ const connectionString =
 
 const finalConnectionString = connectionString || "postgresql://dummy:dummy@localhost:5432/dummy";
 
-if (finalConnectionString === "postgresql://dummy:dummy@localhost:5432/dummy") {
-    console.warn("WARNING: No Database URL Environment Variables found on Vercel. Database operations will fail until added.");
-}
-
 process.env.DATABASE_URL = finalConnectionString;
 
-const client = global.prisma || new PrismaClient();
+let clientInstance: PrismaClient | undefined;
 
-if (process.env.NODE_ENV === 'development') global.prisma = client;
+function getClient() {
+    if (!clientInstance) {
+        if (finalConnectionString === "postgresql://dummy:dummy@localhost:5432/dummy") {
+            console.warn("WARNING: No Database URL Environment Variables found on Vercel. Database operations will fail until added.");
+        }
+        clientInstance = global.prisma || new PrismaClient();
+        if (process.env.NODE_ENV === 'development') global.prisma = clientInstance;
+    }
+    return clientInstance;
+}
+
+const client = new Proxy({} as PrismaClient, {
+    get(target, prop: string | symbol) {
+        // Prevent Vite/SvelteKit from triggering Prisma evaluation during static module analysis
+        if (prop === '__esModule' || prop === 'default' || prop === 'then' || typeof prop === 'symbol') {
+            return Reflect.get(target, prop);
+        }
+        return getClient()[prop as keyof PrismaClient];
+    }
+});
 
 export { client as prisma };
