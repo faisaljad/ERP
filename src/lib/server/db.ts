@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { PrismaNeon } from '@prisma/adapter-neon';
+import ws from 'ws';
 import { env } from '$env/dynamic/private';
+
+// Setup WebSocket for Neon in Node environment
+neonConfig.webSocketConstructor = ws;
 
 // Prevent multiple instances of Prisma Client in development
 declare global {
@@ -9,11 +13,11 @@ declare global {
     var prisma: PrismaClient | undefined;
 }
 
-// Vercel Neon integration uses POSTGRES_PRISMA_URL or POSTGRES_URL
-const connectionString = `${env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL}`;
+// Fallback natively to process.env if SvelteKit dynamic injection misses Vercel's prefixed names
+const connectionString = process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL || env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || env.DATABASE_URL || '';
 
 const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
+const adapter = new PrismaNeon(pool as any);
 
 const client = global.prisma || new PrismaClient({ adapter });
 
